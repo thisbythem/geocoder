@@ -2,6 +2,36 @@
 
 Per-release changes to Geocoder.
 
+== 1.2.0 (???)
+
+* Add support for setting arbitrary params in geocoding request URL.
+* Add support for Google's :bounds parameter (thanks to github.com/rosscooperman and github.com/peterjm for submitting suggestions).
+* Code refactoring and cleanup (most notably, added Geocoder::Query class).
+
+== 1.1.3 (2012 Aug 26)
+
+* Add support for Mapquest geocoding service (thanks github.com/razorinc).
+* Add :test lookup for easy testing of apps using Geocoder (thanks github.com/mguterl).
+* Add #precision method to Yandex results (thanks github.com/gemaker).
+* Add support for raising :all exceptions (thanks github.com/andyvb).
+* Add exceptions for certain Google geocoder responses (thanks github.com/andyvb).
+* Add Travis-CI integration (thanks github.com/petergoldstein).
+* Fix: unit config was not working with SQLite (thanks github.com/balvig).
+* Fix: get tests to pass under Jruby (thanks github.com/petergoldstein).
+* Fix: bug in distance_from_sql method (error occurred when coordinates not found).
+* Fix: incompatibility with Mongoid 3.0.x (thanks github.com/petergoldstein).
+
+== 1.1.2 (2012 May 24)
+
+* Add ability to specify default units and distance calculation method (thanks github.com/abravalheri).
+* Add new (optional) configuration syntax (thanks github.com/abravalheri).
+* Add support for cache stores that provide :get and :set methods.
+* Add support for custom HTTP request headers (thanks github.com/robotmay).
+* Add Result#cache_hit attribute (thanks github.com/s01ipsist).
+* Fix: rake geocode:all wasn't properly loading namespaced classes.
+* Fix: properly recognize IP addresses with ::ffff: prefix (thanks github.com/brian-ewell).
+* Fix: avoid exception during calculations when coordinates not known (thanks github.com/flori).
+
 == 1.1.1 (2012 Feb 16)
 
 * Add distance_from_sql class method to geocoded class (thanks github.com/dwilkie).

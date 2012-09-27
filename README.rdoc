@@ -88,6 +88,13 @@ Be sure to read <i>Latitude/Longitude Order</i> in the <i>Notes on MongoDB</i> s
 
 MongoMapper is very similar to Mongoid, just be sure to include <tt>Geocoder::Model::MongoMapper</tt>.
 
+=== Mongo Indices
+
+By default, the methods <tt>geocoded_by</tt> and <tt>reverse_geocoded_by</tt> create a geospatial index. You can avoid index creation with the <tt>:skip_index option</tt>, for example:
+
+  include Geocoder::Model::Mongoid
+  geocoded_by :address, :skip_index => true
+
 === Bulk Geocoding
 
 If you have just added geocoding to an existing application with a lot of objects you can use this Rake task to geocode them all:
@@ -196,7 +203,21 @@ If your model has +street+, +city+, +state+, and +country+ attributes you might 
 For reverse geocoding you can also specify an alternate name attribute where the address will be stored, for example:
 
   reverse_geocoded_by :latitude, :longitude, :address => :location  # ActiveRecord
-  reverse_geocoded_by :coordinates, :address => :loc     # MongoDB
+  reverse_geocoded_by :coordinates, :address => :loc                # MongoDB
+
+
+== Advanced Querying
+
+When querying for objects (if you're using ActiveRecord) you can also look within a square rather than a radius (circle) by using the <tt>within_bounding_box</tt> scope:
+
+  distance = 20
+  center_point = [40.71, 100.23]
+  box = Geocoder::Calculations.bounding_box(center_point, distance)
+  Venue.within_bounding_box(box)
+
+This can also dramatically improve query performance, especially when used in conjunction with indexes on the latitude/longitude columns. Note, however, that returned results do not include +distance+ and +bearing+ attributes. If you want to improve performance AND have access to distance and bearing info, use both scopes:
+
+  Venue.near(center_point, distance).within_bounding_box(box)
 
 
 == Advanced Geocoding
@@ -230,32 +251,33 @@ If you're familiar with the results returned by the geocoding service you're usi
 
 == Geocoding Services
 
-By default Geocoder uses Google's geocoding API to fetch coordinates and street addresses (FreeGeoIP is used for IP address info). However there are several other APIs supported, as well as a variety of settings. Please see the listing and comparison below for details on specific geocoding services (not all settings are supported by all services). The configuration options are:
+By default Geocoder uses Google's geocoding API to fetch coordinates and street addresses (FreeGeoIP is used for IP address info). However there are several other APIs supported, as well as a variety of settings. Please see the listing and comparison below for details on specific geocoding services (not all settings are supported by all services). Some common configuration options are:
 
   # config/initializers/geocoder.rb
+  Geocoder.configure do |config|
 
-  # geocoding service (see below for supported options):
-  Geocoder::Configuration.lookup = :yahoo
+    # geocoding service (see below for supported options):
+    config.lookup = :yahoo
 
-  # to use an API key:
-  Geocoder::Configuration.api_key = "..."
+    # to use an API key:
+    config.api_key = "..."
 
-  # geocoding service request timeout, in seconds (default 3):
-  Geocoder::Configuration.timeout = 5
+    # geocoding service request timeout, in seconds (default 3):
+    config.timeout = 5
 
-  # use HTTPS for geocoding service connections:
-  Geocoder::Configuration.use_https = true
+    # set default units to kilometers:
+    config.units = :km
 
-  # language to use (for search queries and reverse geocoding):
-  Geocoder::Configuration.language = :de
+    # caching (see below for details):
+    config.cache = Redis.new
+    config.cache_prefix = "..."
 
-  # use a proxy to access the service:
-  Geocoder::Configuration.http_proxy  = "127.4.4.1"
-  Geocoder::Configuration.https_proxy = "127.4.4.2" # only if HTTPS is needed
+  end
 
-  # caching (see below for details)
-  Geocoder::Configuration.cache = Redis.new
-  Geocoder::Configuration.cache_prefix = "..."
+Please see lib/geocoder/configuration.rb for a complete list of configuration options. Additionally, some lookups have their own configuration options which are listed in the comparison chart below, and as of version 1.2.0 you can pass arbitrary parameters to any geocoding service. For example, to use Nominatim's <tt>countrycodes</tt> parameter:
+
+  Geocoder::Configuration.lookup = :nominatim
+  Geocoder.search("Paris", :params => {:countrycodes => "gb,de,fr,es,us"})
 
 
 === Listing and Comparison
@@ -264,12 +286,13 @@ The following is a comparison of the supported geocoding APIs. The "Limitations"
 
 ==== Google (<tt>:google</tt>)
 
-API key:: optional (required for Premier)
+API key:: required for Premier (do NOT use a key for the free version)
 Key signup:: http://code.google.com/apis/maps/signup.html
 Quota:: 2,500 requests/day, 100,000 with Google Maps API Premier
 Region:: world
 SSL support:: yes
 Languages:: ar, eu, bg, bn, ca, cs, da, de, el, en, en-AU, en-GB, es, eu, fa, fi, fil, fr, gl, gu, hi, hr, hu, id, it, iw, ja, kn, ko, lt, lv, ml, mr, nl, no, pl, pt, pt-BR, pt-PT, ro, ru, sk, sl, sr, sv, tl, ta, te, th, tr, uk, vi, zh-CN, zh-TW (see http://spreadsheets.google.com/pub?key=p9pdwsai2hDMsLkXsoM05KQ&gid=1)
+Extra options:: <tt>:bounds</tt> - pass SW and NE coordinates as an array of two arrays to bias results towards a viewport
 Documentation:: http://code.google.com/apis/maps/documentation/geocoding/#JSON
 Terms of Service:: http://code.google.com/apis/maps/terms.html#section_10_12
 Limitations:: "You must not use or display the Content without a corresponding Google map, unless you are explicitly permitted to do so in the Maps APIs Documentation, or through written permission from Google." "You must not pre-fetch, cache, or store any Content, except that you may store: (i) limited amounts of Content for the purpose of improving the performance of your Maps API Implementation..."
@@ -312,14 +335,13 @@ Limitations:: Please limit request rate to 1 per second and include your contact
 
 ==== Yandex (<tt>:yandex</tt>)
 
-API key:: required
-Key signup:: http://api.yandex.ru/maps/intro/concepts/intro.xml#apikey
-Quota:: ?
-Region:: Russia
+API key:: none
+Quota:: 25000 requests / day
+Region:: world
 SSL support:: no
-Languages:: Russian, Belarusian, and Ukrainian
-Documentation:: http://api.yandex.ru/maps/geocoder/doc/desc/concepts/response_structure.xml
-Terms of Service:: http://api.yandex.com/direct/eula.xml?ncrnd=8453
+Languages:: Russian, Belarusian, Ukrainian, English, Turkish (only for maps of Turkey)
+Documentation:: http://api.yandex.com.tr/maps/doc/intro/concepts/intro.xml
+Terms of Service:: http://api.yandex.com.tr/maps/doc/intro/concepts/intro.xml#rules
 Limitations:: ?
 
 ==== Geocoder.ca (<tt>:geocoder_ca</tt>)
@@ -333,10 +355,21 @@ Documentation:: ?
 Terms of Service:: http://geocoder.ca/?terms=1
 Limitations:: "Under no circumstances can our data be re-distributed or re-sold by anyone to other parties without our written permission."
 
-==== FreeGeoIP
+==== Mapquest (<tt>:mapquest</tt>)
 
 API key:: none
 Quota:: ?
+Region:: world
+SSL support:: no
+Languages:: English
+Documentation:: http://www.mapquestapi.com/geocoding/
+Terms of Service:: http://info.mapquest.com/terms-of-use/
+Limitations:: ?
+
+==== FreeGeoIP (<tt>:freegeoip</tt>)
+
+API key:: none
+Quota:: 1000 requests per hour.  After reaching the hourly quota, all of your requests will result in HTTP 403 (Forbidden) until it clears up on the next roll over.
 Region:: world
 SSL support:: no
 Languages:: English
@@ -356,6 +389,7 @@ This example uses Redis, but the cache store can be any object that supports the
 * <tt>store#[](key)</tt>         - retrieves a value
 * <tt>store#[]=(key, value)</tt> - stores a value
 * <tt>store#keys</tt>            - lists all keys
+* <tt>store#del(url)</tt>        - deletes a value
 
 Even a plain Ruby hash will work, though it's not a great choice (cleared out when app is restarted, not shared between app instances, etc).
 
@@ -416,6 +450,29 @@ You can use Geocoder outside of Rails by calling the <tt>Geocoder.search</tt> me
 This returns an array of <tt>Geocoder::Result</tt> objects with all information provided by the geocoding service. Please see above and in the code for details.
 
 
+== Testing Apps that Use Geocoder
+
+When writing tests for an app that uses Geocoder it may be useful to avoid network calls and have Geocoder return consistent, configurable results. To do this, configure and use the <tt>:test</tt> lookup. For example:
+
+  Geocoder::Configuration.lookup = :test
+
+  Geocoder::Lookup::Test.add_stub(
+    "New York, NY", [
+      {
+        'latitude'     => 40.7143528,
+        'longitude'    => -74.0059731,
+        'address'      => 'New York, NY, USA',
+        'state'        => 'New York',
+        'state_code'   => 'NY',
+        'country'      => 'United States',
+        'country_code' => 'US'
+      }
+    ]
+  )
+
+Now, any time Geocoder looks up "New York, NY" its results array will contain one result with the above attributes.
+
+
 == Command Line Interface
 
 When you install the Geocoder gem it adds a +geocode+ command to your shell. You can search for a street address, IP address, postal code, coordinates, etc just like you can with the Geocoder.search method for example:
@@ -441,7 +498,7 @@ Mongo document classes (Mongoid and MongoMapper) have a built-in +near+ scope, b
 
 === Latitude/Longitude Order
 
-Coordinates are generally printed and spoken as latitude, then logitude ([lat,lon]). Geocoder respects this convention and always expects method arguments to be given in [lat,lon] order. However, MongoDB requires that coordinates be stored in [lon,lat] order as per the GeoJSON spec (http://geojson.org/geojson-spec.html#positions), so internally they are stored "backwards." However, this does not affect order of arguments to methods when using Mongoid or MongoMapper.
+Coordinates are generally printed and spoken as latitude, then longitude ([lat,lon]). Geocoder respects this convention and always expects method arguments to be given in [lat,lon] order. However, MongoDB requires that coordinates be stored in [lon,lat] order as per the GeoJSON spec (http://geojson.org/geojson-spec.html#positions), so internally they are stored "backwards." However, this does not affect order of arguments to methods when using Mongoid or MongoMapper.
 
 To access an object's coordinates in the conventional order, use the <tt>to_coordinates</tt> instance method provided by Geocoder. For example:
 
@@ -485,6 +542,12 @@ By default Geocoder will rescue any exceptions raised by calls to the geocoding 
 
   Geocoder::Configuration.always_raise = [SocketError, TimeoutError]
 
+You can also do this to raise all exceptions:
+
+  Geocoder::Configuration.always_raise = :all
+
+See <tt>lib/geocoder/exceptions.rb</tt> for a list of raise-able exceptions.
+
 
 == Known Issue
 
@@ -496,4 +559,4 @@ You cannot use the +near+ scope with another scope that provides an +includes+ o
 If anyone has a more elegant solution to this problem I am very interested in seeing it.
 
 
-Copyright (c) 2009-11 Alex Reisner, released under the MIT license
+Copyright (c) 2009-12 Alex Reisner, released under the MIT license
